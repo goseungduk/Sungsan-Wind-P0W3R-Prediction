@@ -1,10 +1,12 @@
 import tensorflow as tf
+import tensorflowjs as tfjs
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import os
 
 from tensorflow.keras import callbacks
+
 
 def spliting_univariate_data(dataset, start_idx, end_idx, past_size, forecast_size):
     input_data = []
@@ -19,14 +21,16 @@ def spliting_univariate_data(dataset, start_idx, end_idx, past_size, forecast_si
         # 2, start_idx+past_size+1 : 20개
         # ...
         # 830, 849 : 20개
-        input_data.append(np.reshape(dataset[indices],(past_size, 1 )))
+        input_data.append(np.reshape(dataset[indices], (past_size, 1)))
         # [[]], [[]], [[]], ... 계속 이어나감
         target_data.append(dataset[i+forecast_size])
         # [], [], [], ... 계속 이어나감
     return np.array(input_data), np.array(target_data)
 
+
 def create_time_steps(length):
     return list(range(-length, 0))
+
 
 def show_plot(plot_data, delta, title):
     labels = ['History', 'True Future', 'Model Prediction']
@@ -41,12 +45,14 @@ def show_plot(plot_data, delta, title):
         if(i):
             plt.plot(future, plot_data[i], markers[i], label=labels[i])
         else:
-            plt.plot(time_steps,plot_data[i].flatten(), markers[i], label=labels[i])
-    
+            plt.plot(time_steps, plot_data[i].flatten(
+            ), markers[i], label=labels[i])
+
     plt.legend()
     plt.xlim([time_steps[0], (future+5)*2])
     plt.xlabel('Time-Steps')
     return plt
+
 
 def show_loss_graph(history):
     loss = history.history['loss']
@@ -56,6 +62,7 @@ def show_loss_graph(history):
     plt.plot(epochs, loss, 'b', label='loss')
     plt.plot(epochs, val_loss, 'r', label='val_loss')
     return plt
+
 
 TRAIN_SPLIT = 790
 # 790 : 하루 뒤, 800 : 이틀 뒤
@@ -67,7 +74,7 @@ FORECAST_SIZE = 0
 BATCH_SIZE = 256
 BUFFER_SIZE = 10000
 
-df=pd.read_csv(r"./sungsan_all.csv")
+df = pd.read_csv(r"./sungsan_all.csv")
 
 print("\nversion: {}".format(tf.__version__))
 # print(df.head())
@@ -87,19 +94,24 @@ uni_data = uni_data.values
 uni_train_mean = uni_data[:TRAIN_SPLIT].mean()
 uni_train_std = uni_data[:TRAIN_SPLIT].std()
 uni_data = (uni_data - uni_train_mean) / uni_train_std
-x_train_uni, y_train_uni = spliting_univariate_data(uni_data, 0, TRAIN_SPLIT, PAST_SIZE, FORECAST_SIZE)
-x_val_uni, y_val_uni = spliting_univariate_data(uni_data, TRAIN_SPLIT, None, PAST_SIZE, FORECAST_SIZE)
+x_train_uni, y_train_uni = spliting_univariate_data(
+    uni_data, 0, TRAIN_SPLIT, PAST_SIZE, FORECAST_SIZE)
+x_val_uni, y_val_uni = spliting_univariate_data(
+    uni_data, TRAIN_SPLIT, None, PAST_SIZE, FORECAST_SIZE)
 # show_plot([x_train_uni[0], y_train_uni[0]], 0, 'Sample').show()
 
 # 2차원 별로 numpy 배열 형식으로 slice
-train_univariate = tf.data.Dataset.from_tensor_slices((x_train_uni, y_train_uni))
-train_univariate = train_univariate.cache().shuffle(BATCH_SIZE).batch(BUFFER_SIZE).repeat()
+train_univariate = tf.data.Dataset.from_tensor_slices(
+    (x_train_uni, y_train_uni))
+train_univariate = train_univariate.cache().shuffle(
+    BATCH_SIZE).batch(BUFFER_SIZE).repeat()
 val_univariate = tf.data.Dataset.from_tensor_slices((x_val_uni, y_val_uni))
 val_univariate = val_univariate.batch(BUFFER_SIZE).repeat()
 
 # modeling
 lstm_wind_forecast_model = tf.keras.models.Sequential()
-lstm_wind_forecast_model.add(tf.keras.layers.LSTM(8, input_shape=x_train_uni.shape[-2:]))
+lstm_wind_forecast_model.add(tf.keras.layers.LSTM(
+    8, input_shape=x_train_uni.shape[-2:]))
 lstm_wind_forecast_model.add(tf.keras.layers.Dense(1))
 lstm_wind_forecast_model.compile(optimizer='adam', loss='mae')
 
@@ -108,8 +120,11 @@ lstm_wind_forecast_model.compile(optimizer='adam', loss='mae')
 # 각각 1.05%, 1.01% 정도의 평균 오차율을 지니고 있다.
 checkpoint_path = "./cp.wind"
 checkpoint_dir = os.path.dirname(checkpoint_path)
-cp_callback = tf.keras.callbacks.ModelCheckpoint(filepath=checkpoint_path, save_weights_only=True, verbose=1)
+cp_callback = tf.keras.callbacks.ModelCheckpoint(
+    filepath=checkpoint_path, save_weights_only=True, verbose=1)
 lstm_wind_forecast_model.load_weights(checkpoint_path)
+# tfjs.converters.save_keras_model(lstm_wind_forecast_model, "./")
+# lstm_wind_forecast_model.save("forecast_wind_tomorrow.h5")
 # history = lstm_wind_forecast_model.fit(train_univariate, epochs=20, steps_per_epoch=200, validation_data=val_univariate, validation_steps=50, callbacks=[cp_callback])
 # 과대적합을 막고싶다면, 더 많은 데이터를 가져와라.
 
@@ -118,20 +133,28 @@ lstm_wind_forecast_model.load_weights(checkpoint_path)
 all_value = 0
 
 for x, y in val_univariate.take(1):
-    # print(x)
+    # print(x[0])
     # print(lstm_wind_forecast_model(x)[0])
-    for i in range(0,224):
-        prediction = tf.get_static_value(lstm_wind_forecast_model.predict(x)[i][0])
+    # plot = show_plot([x[3].numpy(), y[3].numpy(), lstm_wind_forecast_model.predict(x)[3]], 0, 'Wind Power Forecasting')
+    # plot.show()
+    for i in range(0, 224):
+        prediction = tf.get_static_value(
+            lstm_wind_forecast_model.predict(x)[i][0])
         truth = tf.get_static_value(y[i])
+        prediction = prediction*uni_train_std + uni_train_mean
+        truth = truth*uni_train_std + uni_train_mean
         p = abs(prediction-truth)/100
         # print(p)
-        all_value+=p
-    
-        #print(tf.get_static_value(lstm_wind_forecast_model(x)[i][0]))
-        #plot = show_plot([x[i].numpy(), y[i].numpy(), lstm_wind_forecast_model.predict(x)[i]], 0, 'Wind Power Forecasting')
-        #plot.show()
+        all_value += p
+        # plot = show_plot([x[i].numpy(), y[i].numpy(), lstm_wind_forecast_model.predict(
+        #     x)[i][0]], 0, 'Wind Power Forecasting')
+        # plot.show()
 
-print("평균 오차율 : "+str(all_value)+" %")
+        # print(tf.get_static_value(lstm_wind_forecast_model(x)[i][0]))
+        #plot = show_plot([x[i].numpy(), y[i].numpy(), lstm_wind_forecast_model.predict(x)[i]], 0, 'Wind Power Forecasting')
+        # plot.show()
+
+print("평균 오차율 : "+str(all_value/224)+" %")
 
 '''
 하루만큼의 예측을 알고싶으면,
